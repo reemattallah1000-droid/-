@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>إدارة المواعيد</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<style>
+    body { font-family: Arial; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin:0; padding:0; min-height:100vh; }
+    h1 { text-align:center; padding:25px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color:#fff; margin:0; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+    .container { width:80%; max-width:700px; margin:30px auto; background:#fff;
+        padding:30px 35px; border-radius:15px; box-shadow:0 8px 30px rgba(0,0,0,0.3); }
+    label { font-weight:bold; display:block; margin-top:15px; color:#333; }
+    input, select { width:100%; padding:12px; margin-top:5px; border:2px solid #e0e0e0; 
+        border-radius:8px; box-sizing: border-box; transition: border 0.3s; }
+    input:focus, select:focus { outline:none; border-color:#f5576c; }
+    button { padding:12px 25px; margin-top:15px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color:white; border:none; border-radius:8px; cursor:pointer; font-size:16px; 
+        font-weight:bold; transition: transform 0.2s, box-shadow 0.2s; }
+    button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(245, 87, 108, 0.4); }
+    table { width:100%; margin-top:25px; border-collapse: collapse; }
+    th, td { border-bottom:2px solid #f0f0f0; padding:12px; text-align:center; }
+    th { color:#fff; font-weight:bold; }
+    th:nth-child(1) { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); } /* اسم العميل */
+    th:nth-child(2) { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); } /* التاريخ */
+    th:nth-child(3) { background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); } /* الوقت */
+    th:nth-child(4) { background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); } /* الحالة */
+    th:nth-child(5) { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); } /* تعديل */
+    th:nth-child(6) { background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%); } /* حذف */
+    .btn-edit { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); 
+        padding:8px 15px; font-size:14px; color:#fff; font-weight:bold; }
+    .btn-delete { background: linear-gradient(135deg, #ff0844 0%, #ff5252 100%); 
+        padding:8px 15px; font-size:14px; color:#fff; font-weight:bold; }
+    .btn-edit:hover { transform: scale(1.05); box-shadow: 0 3px 10px rgba(250, 112, 154, 0.5); }
+    .btn-delete:hover { transform: scale(1.05); box-shadow: 0 3px 10px rgba(255, 8, 68, 0.5); }
+    .message { padding:12px; margin-top:15px; border-radius:8px; text-align:center; font-weight:bold; }
+    .success { background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); color:#155724; border:none; }
+    .error { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); color:#721c24; border:none; }
+</style>
+</head>
+
+<body>
+
+<h1>إدارة المواعيد</h1>
+
+<div class="container">
+
+    <label>اسم العميل:</label>
+    <input type="text" id="clientName" placeholder="اكتب اسم العميل">
+
+    <label>تاريخ الموعد:</label>
+    <input type="date" id="appointmentDate">
+
+    <label>وقت الموعد:</label>
+    <input type="time" id="appointmentTime">
+
+    <label>حالة الموعد:</label>
+    <select id="status">
+        <option value="قيد الانتظار">قيد الانتظار</option>
+        <option value="تم التأكيد">تم التأكيد</option>
+        <option value="ملغي">ملغي</option>
+    </select>
+
+    <button onclick="addAppointment()">إضافة الحجز</button>
+    
+    <div id="message"></div>
+
+    <table id="appointmentsTable">
+        <thead>
+            <tr>
+                <th>اسم العميل</th>
+                <th>التاريخ</th>
+                <th>الوقت</th>
+                <th>الحالة</th>
+                <th>تعديل</th>
+                <th>حذف</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+</div>
+
+<script>
+// اتصال Supabase
+const { createClient } = supabase;
+const supabaseUrl = "https://qpamveozcisaseyqqcsh.supabase.co"; // ← ضعي رابط مشروع سوبابيز هنا
+const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFwYW12ZW96Y2lzYXNleXFxY3NoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5Mzk3NTIsImV4cCI6MjA4MDUxNTc1Mn0.Y-uPuUaRN0iENU70BN0rTtHfQ2Di85v9fYG2wUUDQ_I"; // ← ضعي المفتاح هنا
+const db = createClient(supabaseUrl, supabaseKey);
+
+// عرض رسالة للمستخدم
+function showMessage(text, type) {
+    const messageDiv = document.getElementById("message");
+    messageDiv.textContent = text;
+    messageDiv.className = `message ${type}`;
+    setTimeout(() => {
+        messageDiv.textContent = "";
+        messageDiv.className = "";
+    }, 3000);
+}
+
+// تحميل الحجوزات
+async function loadAppointments() {
+    try {
+        const { data, error } = await db.from("appointments").select("*").order("id", { ascending: false });
+        
+        if (error) {
+            console.error("خطأ في تحميل البيانات:", error);
+            showMessage("فشل تحميل البيانات", "error");
+            return;
+        }
+        
+        renderAppointments(data || []);
+    } catch (err) {
+        console.error("خطأ:", err);
+        showMessage("حدث خطأ في الاتصال", "error");
+    }
+}
+
+// عرض الحجوزات داخل الجدول
+function renderAppointments(list) {
+    const tbody = document.querySelector("#appointmentsTable tbody");
+    tbody.innerHTML = "";
+
+    if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6">لا توجد مواعيد محجوزة</td></tr>`;
+        return;
+    }
+
+    list.forEach(item => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${item.client_name}</td>
+                <td>${item.appointment_date}</td>
+                <td>${item.appointment_time}</td>
+                <td>${item.status}</td>
+                <td>
+                    <button class="btn-edit" onclick="editAppointment(${item.id})">تعديل</button>
+                </td>
+                <td>
+                    <button class="btn-delete" onclick="deleteAppointment(${item.id})">حذف</button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+// إضافة موعد جديد
+async function addAppointment() {
+    let name = document.getElementById("clientName").value.trim();
+    let date = document.getElementById("appointmentDate").value;
+    let time = document.getElementById("appointmentTime").value;
+    let status = document.getElementById("status").value;
+
+    // التحقق من البيانات
+    if (!name || !date || !time) {
+        showMessage("من فضلك أدخل جميع البيانات.", "error");
+        return;
+    }
+
+    try {
+        const { data, error } = await db.from("appointments").insert([{ 
+            client_name: name,
+            appointment_date: date,
+            appointment_time: time,
+            status: status
+        }]);
+
+        if (error) {
+            console.error("خطأ في الإضافة:", error);
+            showMessage("فشل إضافة الموعد", "error");
+            return;
+        }
+
+        // مسح الحقول
+        document.getElementById("clientName").value = "";
+        document.getElementById("appointmentDate").value = "";
+        document.getElementById("appointmentTime").value = "";
+        document.getElementById("status").value = "قيد الانتظار";
+
+        showMessage("تم إضافة الموعد بنجاح!", "success");
+        loadAppointments();
+    } catch (err) {
+        console.error("خطأ:", err);
+        showMessage("حدث خطأ في الإضافة", "error");
+    }
+}
+
+// تعديل موعد
+async function editAppointment(id) {
+    const newName = prompt("اكتب اسم العميل الجديد:");
+    if (!newName) {
+        return;
+    }
+    
+    const newDate = prompt("أدخل التاريخ الجديد (YYYY-MM-DD):");
+    if (!newDate) {
+        return;
+    }
+    
+    const newTime = prompt("أدخل الوقت الجديد (HH:MM):");
+    if (!newTime) {
+        return;
+    }
+    
+    const newStatus = prompt("أدخل الحالة الجديدة (قيد الانتظار / تم التأكيد / ملغي):");
+    if (!newStatus) {
+        return;
+    }
+
+    try {
+        const { error } = await db.from("appointments").update({
+            client_name: newName,
+            appointment_date: newDate,
+            appointment_time: newTime,
+            status: newStatus
+        }).eq("id", id);
+
+        if (error) {
+            console.error("خطأ في التعديل:", error);
+            showMessage("فشل تعديل الموعد", "error");
+            return;
+        }
+
+        showMessage("تم تعديل الموعد بنجاح!", "success");
+        loadAppointments();
+    } catch (err) {
+        console.error("خطأ:", err);
+        showMessage("حدث خطأ في التعديل", "error");
+    }
+}
+
+// حذف موعد
+async function deleteAppointment(id) {
+    if (!confirm("هل أنت متأكد من الحذف؟")) {
+        return;
+    }
+
+    try {
+        const { error } = await db.from("appointments").delete().eq("id", id);
+
+        if (error) {
+            console.error("خطأ في الحذف:", error);
+            showMessage("فشل حذف الموعد", "error");
+            return;
+        }
+
+        showMessage("تم حذف الموعد بنجاح!", "success");
+        loadAppointments();
+    } catch (err) {
+        console.error("خطأ:", err);
+        showMessage("حدث خطأ في الحذف", "error");
+    }
+}
+
+// تحميل البيانات عند فتح الصفحة
+loadAppointments();
+</script>
+
+</body>
+</html>
